@@ -18,15 +18,60 @@ using namespace std;
 #define EDGEID 2
 #define STATE 3
 
+// node states
+#define SLEEPING 0
+#define FIND 1
+#define FOUND 2
+// messages
+#define CONNECT 0
+#define INITIATE 1
+#define TEST 2
+#define ACCEPT 3
+#define REJECT 4
+#define REPORT 5
+#define CHANGE_ROOT 6
+#define TERMINATE 7
+
 vector<tuple<int, int, int, int>> edgesFromNode; // (node2,weight,edgeId, state)
+int pRank, commSize;
+int stateOfNode = SLEEPING;
+int levelOfNode;
+int rec_p;
+int termination = 1;
 
 void wakeup() {
-    
+    int minWeightNode2 = get<NODE2>(edgesFromNode[0]);
+    get<STATE>(edgesFromNode[0]) = BRANCH;
+    levelOfNode = 0;
+    stateOfNode = FOUND;
+    rec_p = 0;
+    // int buffer = levelOfNode
+    MPI_Send(&levelOfNode, 1, MPI_INT, minWeightNode2, CONNECT, MPI_COMM_WORLD);
+}
+
+void receiveConnect(int L, int j) {
+    if (stateOfNode == SLEEPING){
+        wakeup();
+    }
+}
+void receiveInitiate(int L, int F, int S, int j) {
+}
+void receiveTest(int L, int F, int j) {
+}
+void receiveAccept(int j) {
+}
+void receiveReject(int j) {
+}
+void receiveReport(int w, int j) {
+}
+void receiveChangeRoot() {
+}
+void terminateP(int j) {
 }
 
 int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
-    int pRank, commSize;
+    
     MPI_Comm_rank(MPI_COMM_WORLD, &pRank);
     MPI_Comm_size(MPI_COMM_WORLD, &commSize);
 
@@ -91,4 +136,54 @@ int main(int argc, char *argv[]) {
     // Initialize nodes
     wakeup();
 
+    while (termination){
+        MPI_Status status;
+        int flag;
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+        if (flag){
+            int message = status.MPI_TAG;
+            int source = status.MPI_SOURCE;
+            int numElements;
+            MPI_Get_count(&status, MPI_INT, &numElements);
+            int buffer[numElements];
+            MPI_Recv(&buffer, numElements, MPI_INT, source, message, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+            switch (message){
+                case CONNECT:
+                    int level = buffer[0];
+                    receiveConnect(level, source);
+                    break;
+                case INITIATE:
+                    int level = buffer[0];
+                    int fragment = buffer[1];
+                    int nodeState = buffer[2];
+                    receiveInitiate(level, fragment, nodeState, source);
+                    break;
+                case TEST:
+                    int level = buffer[0];
+                    int fragment = buffer[1];
+                    receiveTest(level, fragment, source);
+                    break;
+                case ACCEPT:
+                    receiveAccept(source);
+                    break;
+                case REJECT:
+                    receiveReject(source);             
+                    break;
+                case REPORT:
+                    int w = buffer[0];
+                    receiveReport(w, source);
+                    break;
+                case CHANGE_ROOT:
+                    receiveChangeRoot();
+                    break;
+                case TERMINATE:
+                    terminateP(source);
+                    break;
+                case default:
+                    cout << "Invalid message" << endl;
+            }
+        }
+
+    }
 }
