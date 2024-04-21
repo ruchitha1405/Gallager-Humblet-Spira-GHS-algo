@@ -27,7 +27,7 @@ using namespace std;
 #define INITIATE 1
 #define TEST 2
 #define ACCEPT 3
-#define REJECT 4
+#define REJECTED 4
 #define REPORT 5
 #define CHANGE_ROOT 6
 #define TERMINATE 7
@@ -73,6 +73,7 @@ void receiveConnect(int L, int j) {
         cout << "Error: Edge_j not found in receiveConnect of pRank "<< pRank << endl;
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
+    cout<< "indexOfEdgeJ found in receiveConnect"<<endl;
     if (L < levelOfNode){
         get<STATE>(edgesFromNode[indexOfEdgeJ]) = BRANCH;
         // send INITIATE
@@ -93,22 +94,23 @@ void receiveConnect(int L, int j) {
         }
     }
 }
-void receiveInitiate(int L, int F1, int F2,int S, int j) {
-    levelOfNode , fragmentName1, fragmentName2, stateOfNode = L,F1,F2,S;
-    bestch = NULL_EDGE;
-    bestwt = INF_WEIGHT;
-    for (auto edge: edgesFromNode){
-        if (get<NODE2>(edge) != j && get<STATE>(edge) == BRANCH) {
-            int buffer[4] = {L,F1,F2,S};
-            MPI_Send(&buffer,4,MPI_INT,get<NODE2>(edge),INITIATE,MPI_COMM_WORLD);
-            // if (S == FIND){
-            //     rec_p++;
-            // }
+void report(){
+    // if (rec_p ==0 && testch == NULL_EDGE){
+    //     stateOfNode = FOUND;
+    //     int buffer[2]= {bestwt.first,bestwt.second};
+    //     MPI_Send(&buffer,2,MPI_INT,father,REPORT,MPI_COMM_WORLD);
+    // }
+    int numOfChildren = 0;
+    for(auto edge: edgesFromNode){
+        if(get<STATE>(edge) == BRANCH && get<NODE2>(edge) != father){
+            numOfChildren++;
         }
     }
-    if (S == FIND){
-        rec_p = 0; // not in paper
-        test();
+    if (rec_p == numOfChildren && testch == NULL_EDGE){
+        stateOfNode = FOUND;
+        int buffer[2] = {bestwt.first,bestwt.second};
+        cout<<"pRank "<<pRank<<","<<"father"<<father<<endl;
+        MPI_Send(&buffer,2,MPI_INT,father,REPORT,MPI_COMM_WORLD);
     }
 }
 void test(){
@@ -129,6 +131,26 @@ void test(){
         report();
     }
 }
+void receiveInitiate(int L, int F1, int F2,int S, int j) {
+    levelOfNode , fragmentName1, fragmentName2, stateOfNode = L,F1,F2,S;
+    father = j;
+    bestch = NULL_EDGE;
+    bestwt = INF_WEIGHT;
+    for (auto edge: edgesFromNode){
+        if (get<NODE2>(edge) != j && get<STATE>(edge) == BRANCH) {
+            int buffer[4] = {L,F1,F2,S};
+            MPI_Send(&buffer,4,MPI_INT,get<NODE2>(edge),INITIATE,MPI_COMM_WORLD);
+            // if (S == FIND){
+            //     rec_p++;
+            // }
+        }
+    }
+    if (S == FIND){
+        rec_p = 0; // not in paper
+        test();
+    }
+}
+
 void receiveTest(int L, int F1,int F2, int j) {
     if (stateOfNode == SLEEPING) wakeup();
     if (L > levelOfNode){
@@ -144,26 +166,32 @@ void receiveTest(int L, int F1,int F2, int j) {
         if (indexOfEdgeJ == -1){
             cout << "Error: Edge_j not found in receiveTest of pRank "<< pRank << endl;
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        }      
+        } 
+        cout<< "indexOfEdgeJ found in receiveTest"<<endl;
+
         if (get<STATE>(edgesFromNode[indexOfEdgeJ])== BASIC) {
             get<STATE>(edgesFromNode[indexOfEdgeJ]) = REJECT;
         }
         if (get<NODE2>(testch) != j){
             int buffer = 0;
-            MPI_Send(&buffer,1,MPI_INT,j,REJECT,MPI_COMM_WORLD);
+            MPI_Send(&buffer,1,MPI_INT,j,REJECTED,MPI_COMM_WORLD);
+            cout<<"REJECTED message sent from pRank "<<pRank<<endl;
         }
         else {
             test();
         }
     }
 }
+
 void receiveAccept(int j) {
     testch = NULL_EDGE;
     int indexOfEdgeJ = getIndexOfEdgeWithNode2(j);
     if (indexOfEdgeJ == -1){
         cout << "Error: Edge_j not found in receiveAccept of pRank "<< pRank << endl;
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    }      
+    } 
+    cout<< "indexOfEdgeJ found in receiveAccept"<<endl;
+
     if (get<WEIGHT>(edgesFromNode[indexOfEdgeJ]) < bestwt.first || (get<WEIGHT>(edgesFromNode[indexOfEdgeJ]) == bestwt.first && get<EDGEID>(edgesFromNode[indexOfEdgeJ]) < bestwt.second)){
         bestch = edgesFromNode[indexOfEdgeJ];
         bestwt = make_pair(get<WEIGHT>(edgesFromNode[indexOfEdgeJ]),get<EDGEID>(edgesFromNode[indexOfEdgeJ]));
@@ -176,35 +204,51 @@ void receiveReject(int j) {
         cout << "Error: Edge_j not found in receiveReject of pRank "<< pRank << endl;
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
+    cout<< "indexOfEdgeJ found in receiveRejection"<<endl;
     if(get<STATE>(edgesFromNode[indexOfEdgeJ]) == BASIC){
         get<STATE>(edgesFromNode[indexOfEdgeJ]) = REJECT;
     }
     test();
 }
-void report(){
-    // if (rec_p ==0 && testch == NULL_EDGE){
-    //     stateOfNode = FOUND;
-    //     int buffer[2]= {bestwt.first,bestwt.second};
-    //     MPI_Send(&buffer,2,MPI_INT,father,REPORT,MPI_COMM_WORLD);
-    // }
-    int numOfChildren = 0;
-    for(auto edge: edgesFromNode){
-        if(get<STATE>(edge) == BRANCH && get<NODE2>(edge) != father){
-            numOfChildren++;
-        }
+void changeRoot(){
+    int indexOfEdgeJ = getIndexOfEdgeWithNode2(get<NODE2>(bestch));
+    if (indexOfEdgeJ == -1){
+        cout << "Error: Edge_j not found in changeRoot of pRank "<< pRank << endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
-    if (rec_p == numOfChildren && testch == NULL_EDGE){
-        stateOfNode = FOUND;
-        int buffer[2] = {bestwt.first,bestwt.second};
-        MPI_Send(&buffer,2,MPI_INT,father,REPORT,MPI_COMM_WORLD);
+    cout<< "indexOfEdgeJ found in changeRoot"<<endl;
+
+    if (get<STATE>(edgesFromNode[indexOfEdgeJ]) == BRANCH){
+        int buffer =0;
+        MPI_Send(&buffer,1,MPI_INT,get<NODE2>(bestch),CHANGE_ROOT,MPI_COMM_WORLD);
+    }
+    else {
+        get<STATE>(edgesFromNode[indexOfEdgeJ]) = BRANCH;
+        int buffer = levelOfNode;
+        MPI_Send(&buffer,1,MPI_INT,get<NODE2>(bestch),CONNECT,MPI_COMM_WORLD);
+    }
+}
+// send the TERMINATE message to neighbours with state BRANCH
+void terminateP(int j) {
+    for (auto edge: edgesFromNode){
+        if(get<STATE>(edge) == BRANCH && get<NODE2>(edge) != j){
+            int buffer = 0;
+            MPI_Send(&buffer, 1, MPI_INT, get<NODE2>(edge), TERMINATE, MPI_COMM_WORLD);
+        }
     }
 }
 void receiveReport(int w,int id, int j) {
     int indexOfEdgeJ = getIndexOfEdgeWithNode2(j);
     if (indexOfEdgeJ == -1){
-        cout << "Error: Edge_j not found in receiveReject of pRank "<< pRank << endl;
+        cout << "Error: Edge_j not found in receiveReport of pRank "<< pRank << endl;
+        cout<<"j: "<<j<<endl;
+        for (auto edge:edgesFromNode) {
+            cout<< "edge"<< get<NODE2>(edge)<<endl;
+        }
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
+    cout<< "indexOfEdgeJ found in receiveReport"<<endl;
+
     if(father != j){
         if (w<bestwt.first || (w == bestwt.first && id < bestwt.second)){
             bestwt = make_pair(w,id);
@@ -227,34 +271,11 @@ void receiveReport(int w,int id, int j) {
         }
     }
 }
-void changeRoot(){
-    int indexOfEdgeJ = getIndexOfEdgeWithNode2(get<NODE2>(bestch));
-    if (indexOfEdgeJ == -1){
-        cout << "Error: Edge_j not found in receiveReject of pRank "<< pRank << endl;
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    }
-    if (get<STATE>(edgesFromNode[indexOfEdgeJ]) == BRANCH){
-        int buffer =0;
-        MPI_Send(&buffer,1,MPI_INT,get<NODE2>(bestch),CHANGE_ROOT,MPI_COMM_WORLD);
-    }
-    else {
-        get<STATE>(edgesFromNode[indexOfEdgeJ]) = BRANCH;
-        int buffer = levelOfNode;
-        MPI_Send(&buffer,1,MPI_INT,get<NODE2>(bestch),CONNECT,MPI_COMM_WORLD);
-    }
-}
+
 void receiveChangeRoot() {
     changeRoot();
 }
-// send the TERMINATE message to neighbours with state BRANCH
-void terminateP(int j) {
-    for (auto edge: edgesFromNode){
-        if(get<STATE>(edge) == BRANCH && get<NODE2>(edge) != j){
-            int buffer = 0;
-            MPI_Send(&buffer, 1, MPI_INT, get<NODE2>(edge), TERMINATE, MPI_COMM_WORLD);
-        }
-    }
-}
+
 
 int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
@@ -334,32 +355,34 @@ int main(int argc, char *argv[]) {
             MPI_Recv(&buffer, numElements, MPI_INT, source, message, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
             switch (message){
+                int level,f1,f2,nodeState,w,id;
                 case CONNECT:
-                    int level = buffer[0];
+                    level = buffer[0];
                     receiveConnect(level, source);
                     break;
                 case INITIATE:
-                    int level = buffer[0];
-                    int f1 = buffer[1];
-                    int f2 = buffer[2];
-                    int nodeState = buffer[3];
+                    level = buffer[0];
+                    f1 = buffer[1];
+                    f2 = buffer[2];
+                    nodeState = buffer[3];
                     receiveInitiate(level, f1,f2, nodeState, source);
                     break;
                 case TEST:
-                    int level = buffer[0];
-                    int f1 = buffer[1];
-                    int f2 = buffer[2];
+                    level = buffer[0];
+                    f1 = buffer[1];
+                    f2 = buffer[2];
                     receiveTest(level, f1,f2, source);
                     break;
                 case ACCEPT:
                     receiveAccept(source);
                     break;
-                case REJECT:
+                case REJECTED:
+                    cout<<"REJECTED message received"<<endl;
                     receiveReject(source);             
                     break;
                 case REPORT:
-                    int w = buffer[0];
-                    int id = buffer[1];
+                    w = buffer[0];
+                    id = buffer[1];
                     receiveReport(w,id, source);
                     break;
                 case CHANGE_ROOT:
@@ -390,7 +413,8 @@ int main(int argc, char *argv[]) {
     }
     for (auto edge: edgesFromNode){
         if(get<STATE>(edge)== BRANCH && get<NODE2>(edge)>pRank){
-            cout<< pRank << "->" << get<NODE2>(edge)<< "  "<<get<WEIGHT>(edge)<<" "<<get<EDGEID>(edge) <<endl;
+            // cout<< pRank << "->" << get<NODE2>(edge)<< "  "<<get<WEIGHT>(edge)<<" "<<get<EDGEID>(edge) <<endl;
+            cout<< pRank << " " << get<NODE2>(edge)<< " "<<get<WEIGHT>(edge)<<endl;
         }
     }
     MPI_Finalize();
