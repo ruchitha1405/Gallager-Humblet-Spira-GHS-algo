@@ -345,7 +345,6 @@ int main(int argc, char *argv[]) {
                     int f1 = buffer[1];
                     int f2 = buffer[2];
                     int nodeState = buffer[3];
-                    int fragmentName2 = buffer[2];
                     receiveInitiate(level, f1,f2, nodeState, source);
                     break;
                 case TEST:
