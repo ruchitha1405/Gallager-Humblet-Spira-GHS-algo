@@ -278,17 +278,15 @@ int main(int argc, char *argv[]) {
                 int weight;
                 cin >> weight;
                 // assign a unique id to edge
-                int uniqueId = i*numOfNodes + j;
-                 {
-                    if (i == rootRank){
-                        if (weight != INF) {
-                            edgesFromNode.push_back(make_tuple(j, weight, uniqueId, BASIC));
-                        }
+                int uniqueId = (i<=j)? i*numOfNodes + j: j*numOfNodes + i;                
+                if (i == rootRank){
+                    if (weight != INF) {
+                        edgesFromNode.push_back(make_tuple(j, weight, uniqueId, BASIC));
                     }
-                    else{
-                        int buffer[4] = {j, weight, uniqueId, BASIC};
-                        MPI_Send(&buffer, 4, MPI_INT, i, 0, MPI_COMM_WORLD);
-                    }
+                }
+                else{
+                    int buffer[4] = {j, weight, uniqueId, BASIC};
+                    MPI_Send(&buffer, 4, MPI_INT, i, 0, MPI_COMM_WORLD);
                 }
 
             }
