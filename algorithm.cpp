@@ -1,7 +1,7 @@
 #include <bits/stdc++.h>
 #include <mpi.h>
 #include <ctime>
-#include "moss.h"
+#include "algorithm.h"
 
 using namespace std;
 
